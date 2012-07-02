@@ -2,12 +2,12 @@ open Str;;
 open BatString;;
 open BatMap;;
 open List;;
+open Printf;;
+
+(* ---[ Types ]--- *)
 
 exception Parse_error of string;;
 exception Duplicate_var_error of string;;
-
-(* Eg. "abc" =~ "^a" is true *)
-let (=~) s re = Str.string_match (Str.regexp re) s 0;;
 
 type obj_dir_t = OD_Min | OD_Max;;
 
@@ -20,7 +20,18 @@ type cstr_sys = {
         (* cstrs *)
 };;
 
-(* Variables *)
+(* ---[ Helpers ]--- *)
+
+(* Eg. "abc" =~ "^a" is true *)
+let (=~) s re = Str.string_match (Str.regexp re) s 0;;
+
+let print_str_list l = List.iter (fun x -> print_string x) l;;
+
+let trim_split by line =
+        let elems = Str.split (Str.regexp by) line in
+        List.map (fun x -> BatString.trim x) elems;;
+
+(* ---[ Variables ]--- *)
 let add_var sys name =
         ( if StringMap.mem name sys.vars_fwd then
                 raise (Duplicate_var_error name)
@@ -32,7 +43,7 @@ let add_var sys name =
                 sys.next_var_num <- sys.next_var_num + 1
         );;
 
-(* Parsing *)
+(* ---[ Parsing ]--- *)
 let parse_min_line sys line = 
         let elems = Str.split (Str.regexp ",") line in
         (if List.length elems == 0 then raise (Parse_error("min: " ^ line)));
@@ -41,12 +52,11 @@ let parse_min_line sys line =
 let parse_cstr_line sys line = ();;
 
 let parse_vars_line sys line =
-        let elems = Str.split (Str.regexp ",") line in
-        let elems_s = List.map (fun e -> BatString.trim e) elems in
-        List.iter (add_var sys) elems_s; ();;
+        let elems = trim_split "," line in
+        List.iter (add_var sys) elems; ();;
 
 let parse_real_line sys line =
-        let elems = Str.split (Str.regexp ":") line in
+        let elems = trim_split ":" line in
         let prefix = (List.hd elems) in
         if List.length elems != 2 then raise (Parse_error line);
         match prefix with
@@ -66,7 +76,7 @@ let parse sys filename =
                 while true do (parse_line sys (input_line file)) done
         with End_of_file -> close_in file; ();;
 
-(* MAIN *)
+(* ---[ MAIN ]--- *)
 let sys = {
         obj_dir = OD_Min;
         vars_fwd = StringMap.empty;
@@ -74,3 +84,4 @@ let sys = {
         next_var_num = 0;
 };;
 parse sys "test_input.opl";;
+Printf.printf "Variables: %d\n" sys.next_var_num;;
