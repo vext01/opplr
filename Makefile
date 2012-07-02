@@ -1,3 +1,3 @@
 all:
-	ocamlfind ocamlc -linkpkg -package batteries -o oppl oppl_parse.ml
+	ocamlfind ocamlc -linkpkg -package batteries -o oppl oppl.ml
 
