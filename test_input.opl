@@ -1,0 +1,5 @@
+min:x,y
+# comment
+cstr1:x >= 10
+cstr2:x,2*y <= 12
+cstr3:y >= 11
