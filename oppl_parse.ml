@@ -1,27 +1,76 @@
 open Str;;
 open BatString;;
+open BatMap;;
 open List;;
+
+exception Parse_error of string;;
+exception Duplicate_var_error of string;;
 
 (* Eg. "abc" =~ "^a" is true *)
 let (=~) s re = Str.string_match (Str.regexp re) s 0;;
 
-let parse_real_line line =
+type obj_dir_t = OD_Min | OD_Max;;
+
+type cstr_sys = {
+        mutable obj_dir : obj_dir_t;
+        mutable vars_fwd : int StringMap.t;
+        mutable vars_bkw : string IntMap.t;
+        mutable next_var_num : int;
+        (* obj *)
+        (* cstrs *)
+};;
+
+(* Variables *)
+let add_var sys name =
+        ( if StringMap.mem name sys.vars_fwd then
+                raise (Duplicate_var_error name)
+        else
+                sys.vars_fwd <-
+                        StringMap.add name sys.next_var_num sys.vars_fwd;
+                sys.vars_bkw <-
+                        IntMap.add sys.next_var_num name sys.vars_bkw;
+                sys.next_var_num <- sys.next_var_num + 1
+        );;
+
+(* Parsing *)
+let parse_min_line sys line = 
+        let elems = Str.split (Str.regexp ",") line in
+        (if List.length elems == 0 then raise (Parse_error("min: " ^ line)));
+        sys.obj_dir <- OD_Min;; (* XXX *)
+
+let parse_cstr_line sys line = ();;
+
+let parse_vars_line sys line =
+        let elems = Str.split (Str.regexp ",") line in
+        let elems_s = List.map (fun e -> BatString.trim e) elems in
+        List.iter (add_var sys) elems_s; ();;
+
+let parse_real_line sys line =
         let elems = Str.split (Str.regexp ":") line in
         let prefix = (List.hd elems) in
+        if List.length elems != 2 then raise (Parse_error line);
         match prefix with
-        "min" -> print_string("MIN LINE\n"); ()
-        | _ -> print_string("CONSTRAINT\n"); ();;
+        "vars" -> parse_vars_line sys (hd (List.tl elems)); ()
+        | "min" -> parse_min_line sys (hd (List.tl elems)); ()
+        | _ -> parse_cstr_line sys line; ();;
 
-let parse_line line = match line with
+let parse_line sys line = match line with
         "" -> ()
         | _ -> (
                 if BatString.starts_with line "#" then ()
-                else parse_real_line line; ()
+                else parse_real_line sys line; ()
                );;
 
-let parse filename = 
+let parse sys filename = 
         let file = open_in filename in try
-                while true do (parse_line (input_line file)) done
+                while true do (parse_line sys (input_line file)) done
         with End_of_file -> close_in file; ();;
 
-parse "test_input.opl";;
+(* MAIN *)
+let sys = {
+        obj_dir = OD_Min;
+        vars_fwd = StringMap.empty;
+        vars_bkw = IntMap.empty;
+        next_var_num = 0;
+};;
+parse sys "test_input.opl";;

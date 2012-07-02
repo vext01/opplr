@@ -1,3 +1,4 @@
+vars: x, y
 min:x,y
 # comment
 cstr1:x >= 10
