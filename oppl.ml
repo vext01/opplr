@@ -9,6 +9,7 @@ open Ppl_ocaml;;
 
 exception Parse_error of string;;
 exception Duplicate_var_error of string;;
+exception Var_not_found_error of string;;
 exception Empty_list_error;;
 exception Bad_term_error of string;;
 
@@ -83,22 +84,25 @@ let add_var sys name =
         sys.vars_fwd_lx <- StringMap.add name (Variable sys.next_var_num) sys.vars_fwd_lx;
         sys.next_var_num <- sys.next_var_num + 1;;
 
+let lookup_var_lx name sys = try
+    StringMap.find name sys.vars_fwd_lx with
+    | Not_found -> raise (Var_not_found_error name);;
+
 (* ---[ Parsing ]--- *)
 
 let parse_term (sys:cstr_sys) (s:string) : linear_expression =
     let elems = trim_split "*" s  in
     match List.length elems with
-    | 1 -> StringMap.find (List.hd elems) sys.vars_fwd_lx
+    | 1 -> lookup_var_lx (List.nth elems 0) sys
     | 2 -> Times(
             (Gmp.Z.from_string (List.nth elems 0)),
-            (StringMap.find (List.nth elems 1) sys.vars_fwd_lx)
+            (lookup_var_lx (List.nth elems 1) sys)
            )
     | _ -> raise (Bad_term_error s);;
 
 let parse_obj_line sys dir line =
     let elems = trim_split  "," line in
     if List.length elems == 0 then raise (Parse_error("min: " ^ line));
-    (*let vars = List.map (fun x -> StringMap.find x sys.vars_fwd_lx) elems in *)
     let vars = List.map (parse_term sys) elems in
     let obj_fun = fold1_left (fun x y -> Plus(x, y)) vars in
     sys.obj_fun <- obj_fun;
