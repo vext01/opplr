@@ -10,10 +10,14 @@ open Ppl_ocaml;;
 exception Parse_error of string;;
 exception Duplicate_var_error of string;;
 exception Var_not_found_error of string;;
+exception Col_not_found_error of int;;
 exception Empty_list_error;;
 exception Bad_term_error of string;;
 exception Bad_int_error of string;;
 exception Bad_oper_error of string;;
+exception Solver_error of string;;
+
+type var_val = VarVal of string * Gmp.Z.t;;
 
 type cstr_sys = {
     mutable obj_dir : Ppl_ocaml.optimization_mode;
@@ -23,6 +27,7 @@ type cstr_sys = {
     mutable next_var_num : int;
     mutable obj_fun : linear_expression;
     mutable cstrs : linear_constraint list;
+    mutable result : var_val list; 
 };;
 
 (* ---[ Helpers ]--- *)
@@ -80,8 +85,7 @@ let parse_arb_int s =
     try
         ignore (Str.search_forward (Str.regexp "^[0-9]+$") s' 0);
         Gmp.Z.from_string s'
-    with Not_found -> 
-        raise (Bad_int_error s);;
+    with Not_found -> raise (Bad_int_error s);;
 
 (* ---[ Variables ]--- *)
 let add_var sys name =
@@ -96,6 +100,11 @@ let add_var sys name =
 let lookup_var_lx name sys = try
     StringMap.find name sys.vars_fwd_lx with
     | Not_found -> raise (Var_not_found_error name);;
+
+let lookup_var_col_from_lx col sys = try
+    IntMap.find col sys.vars_bkw with
+    | Not_found -> raise (Col_not_found_error col);;
+
 
 (* ---[ Constraints ]--- *)
 let add_cstr sys lhs op rhs =
@@ -166,6 +175,44 @@ let parse sys filename =
         while true do (parse_line sys (input_line file)) done
         with End_of_file -> close_in file; ();;
 
+(* ---[ Solving ]--- *)
+
+let print_result (VarVal(name, value)) : unit =
+    Printf.printf "%s=%s\n" name (Gmp.Z.to_string value);;
+
+let print_results sys =
+    List.iter (print_result) sys.result;;
+
+let get_col_from_expression (lx:linear_expression) : int =
+    match lx with
+    | Variable(col) -> col
+    | _ -> raise (Solver_error "unexpected non-Variable expression");;
+
+let rec parse_result_expression sys (lx:linear_expression) = 
+    match lx with
+    | Plus (e1, e2) ->
+            parse_result_expression sys e1;
+            parse_result_expression sys e2;
+    | Times (zval, col) ->
+            let name = lookup_var_col_from_lx (get_col_from_expression  col) sys in
+                sys.result <- List.append sys.result (VarVal(name, zval)::[])
+    | _ -> 
+            raise (Solver_error "Bad result expression from solver?");;
+
+let get_result sys mip = 
+    let pt = ppl_MIP_Problem_optimizing_point mip in
+    match pt with
+    | Point(lx, num) -> parse_result_expression sys lx
+    | _ -> raise (Solver_error "solution was not a point");;
+
+let solve (sys:cstr_sys) =
+    let n_cstrs = List.length sys.cstrs in 
+    let mip = ppl_new_MIP_Problem n_cstrs sys.cstrs sys.obj_fun sys.obj_dir in
+    let status = ppl_MIP_Problem_solve mip in
+    match status with
+    | Optimized_Mip_Problem -> get_result sys mip
+    | _                     -> raise (Solver_error "NOT OPTIMAL\n");;
+
 (* ---[ MAIN ]--- *)
 let sys = {
     obj_dir = Ppl_ocaml.Minimization;
@@ -175,6 +222,7 @@ let sys = {
     next_var_num = 0;
     obj_fun = Coefficient (Gmp.Z.of_int 0);
     cstrs = [];
+    result = [];
 };;
 
 (* let test = Plus ((Variable 1), (Variable 2));; *)
@@ -182,3 +230,5 @@ parse sys "test_input.opl";;
 Printf.printf "Variables: %d\n" sys.next_var_num;;
 print_string("Objective Func: \n");;
 Printf.printf "Constraints: %d\n" (List.length sys.cstrs);;
+let res = solve sys;;
+print_results sys;;
