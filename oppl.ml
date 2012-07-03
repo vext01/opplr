@@ -33,19 +33,17 @@ let trim_split by line =
 
 (* ---[ Variables ]--- *)
 let add_var sys name =
-    (
-        if StringMap.mem name sys.vars_fwd then
-            raise (Duplicate_var_error name)
+    if StringMap.mem name sys.vars_fwd then
+        raise (Duplicate_var_error name)
     else
         sys.vars_fwd <- StringMap.add name sys.next_var_num sys.vars_fwd;
         sys.vars_bkw <- IntMap.add sys.next_var_num name sys.vars_bkw;
-        sys.next_var_num <- sys.next_var_num + 1
-    );;
+        sys.next_var_num <- sys.next_var_num + 1;;
 
 (* ---[ Parsing ]--- *)
 let parse_min_line sys line = 
     let elems = Str.split (Str.regexp ",") line in
-    (if List.length elems == 0 then raise (Parse_error("min: " ^ line)));
+    if List.length elems == 0 then raise (Parse_error("min: " ^ line));
     sys.obj_dir <- OD_Min;; (* XXX *)
 
 let parse_cstr_line sys line = ();;
