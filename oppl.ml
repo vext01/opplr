@@ -3,6 +3,7 @@ open BatString;;
 open BatMap;;
 open List;;
 open Printf;;
+open Ppl_ocaml;;
 
 (* ---[ Types ]--- *)
 
@@ -42,8 +43,9 @@ let add_var sys name =
 
 (* ---[ Parsing ]--- *)
 let parse_min_line sys line = 
-    let elems = Str.split (Str.regexp ",") line in
+    let elems = trim_split  "," line in
     if List.length elems == 0 then raise (Parse_error("min: " ^ line));
+
     sys.obj_dir <- OD_Min;; (* XXX *)
 
 let parse_cstr_line sys line = ();;
