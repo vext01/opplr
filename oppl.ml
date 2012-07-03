@@ -24,7 +24,7 @@ type cstr_sys = {
     mutable vars_fwd_lx : linear_expression StringMap.t;
     mutable next_var_num : int;
     mutable obj_fun : linear_expression;
-    (* cstrs *)
+    mutable cstrs : linear_constraint list;
 };;
 
 (* ---[ Helpers ]--- *)
@@ -99,6 +99,15 @@ let lookup_var_lx name sys = try
     StringMap.find name sys.vars_fwd_lx with
     | Not_found -> raise (Var_not_found_error name);;
 
+(* ---[ Constraints ]--- *)
+let add_cstr sys lhs op rhs =
+    let lx = match op with
+    | ">=" -> Greater_Or_Equal(lhs, rhs)
+    | "<=" -> Less_Or_Equal(lhs, rhs)
+    | "==" -> Equal(lhs, rhs)
+    | _    -> raise (Bad_oper_error op) in
+    sys.cstrs <- List.append sys.cstrs [lx];;
+
 (* ---[ Parsing ]--- *)
 let parse_term (sys:cstr_sys) (s:string) : linear_expression =
     let elems = trim_split "*" s  in
@@ -122,17 +131,6 @@ let parse_obj_line sys dir line =
     sys.obj_fun <- obj_fun;
     sys.obj_dir <- dir;;
 
-(*
-let parse_op s =
-    match s with
-    | ">=" -> (Greater_Or_Equal)
-    | "<=" -> (Less_Or_Equal)
-    | "==" -> (Equal)
-    | _    -> raise (Bad_oper_error s);;
-*)
-
-let add_cstr sys lhs op rhs = ();;
-
 let parse_cstr_line sys cstr_name line =
     let re = "^\\([^>=<]*\\)\\(<=\\|==\\|>=\\)\\([^>=<]*\\)$" in 
     let ok = Str.string_match (Str.regexp re) line 0 in
@@ -140,7 +138,7 @@ let parse_cstr_line sys cstr_name line =
     | true -> let lhs = (Str.matched_group 1 line) in
               let op = (Str.matched_group 2 line) in
               let rhs = (Str.matched_group 3 line) in
-              add_cstr sys (parse_terms sys lhs) op (parse_arb_int rhs)
+              add_cstr sys (parse_terms sys lhs) op (Coefficient (parse_arb_int rhs))
     | _    -> raise (Parse_error line);;
 
 let parse_vars_line sys line =
@@ -177,11 +175,11 @@ let sys = {
     vars_fwd_lx = StringMap.empty;
     next_var_num = 0;
     obj_fun = Coefficient (Gmp.Z.of_int 0);
+    cstrs = [];
 };;
 
 (* let test = Plus ((Variable 1), (Variable 2));; *)
 parse sys "test_input.opl";;
 Printf.printf "Variables: %d\n" sys.next_var_num;;
 print_string("Objective Func: \n");;
-print_linear_expression sys.obj_fun;;
-print_string("\n");;
+Printf.printf "Constraints: %d\n" (List.length sys.cstrs);;
