@@ -15,10 +15,8 @@ exception Bad_term_error of string;;
 exception Bad_int_error of string;;
 exception Bad_oper_error of string;;
 
-type obj_dir_t = OD_Min | OD_Max;;
-
 type cstr_sys = {
-    mutable obj_dir : obj_dir_t;
+    mutable obj_dir : Ppl_ocaml.optimization_mode;
     mutable vars_fwd : int StringMap.t;
     mutable vars_bkw : string IntMap.t;
     mutable vars_fwd_lx : linear_expression StringMap.t;
@@ -80,7 +78,7 @@ let fold1_left f l =
 let parse_arb_int s =
     let s' = BatString.trim s in 
     try
-        Str.search_forward (Str.regexp "^[0-9]+$") s' 0;
+        ignore (Str.search_forward (Str.regexp "^[0-9]+$") s' 0);
         Gmp.Z.from_string s'
     with Not_found -> 
         raise (Bad_int_error s);;
@@ -151,7 +149,8 @@ let parse_real_line sys line =
     if List.length elems != 2 then raise (Parse_error line);
     match prefix with
     | "vars" -> parse_vars_line sys (List.nth elems 1)
-    | "min"  -> parse_obj_line sys OD_Min (List.nth elems 1)
+    | "min"  -> parse_obj_line sys Ppl_ocaml.Minimization (List.nth elems 1)
+    | "max"  -> parse_obj_line sys Ppl_ocaml.Maximization (List.nth elems 1)
     | _      -> parse_cstr_line sys prefix (List.nth elems 1);;
 
 let parse_line sys line =
@@ -169,7 +168,7 @@ let parse sys filename =
 
 (* ---[ MAIN ]--- *)
 let sys = {
-    obj_dir = OD_Min;
+    obj_dir = Ppl_ocaml.Minimization;
     vars_fwd = StringMap.empty;
     vars_bkw = IntMap.empty;
     vars_fwd_lx = StringMap.empty;
