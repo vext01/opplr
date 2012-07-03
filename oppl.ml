@@ -12,6 +12,8 @@ exception Duplicate_var_error of string;;
 exception Var_not_found_error of string;;
 exception Empty_list_error;;
 exception Bad_term_error of string;;
+exception Bad_int_error of string;;
+exception Bad_oper_error of string;;
 
 type obj_dir_t = OD_Min | OD_Max;;
 
@@ -74,6 +76,13 @@ let fold1_left f l =
     | x :: xs -> fold_left f x xs
     | []      -> raise Empty_list_error;;
 
+let parse_arb_int s =
+    let not_ok = Str.string_match (Str.regexp "[^0-9]") s 0 in
+    match not_ok with
+    | true  -> raise (Bad_int_error s)
+    | false -> Gmp.Z.from_string s;;
+
+
 (* ---[ Variables ]--- *)
 let add_var sys name =
     if StringMap.mem name sys.vars_fwd then
@@ -95,20 +104,46 @@ let parse_term (sys:cstr_sys) (s:string) : linear_expression =
     match List.length elems with
     | 1 -> lookup_var_lx (List.nth elems 0) sys
     | 2 -> Times(
-            (Gmp.Z.from_string (List.nth elems 0)),
+            (parse_arb_int (List.nth elems 0)),
             (lookup_var_lx (List.nth elems 1) sys)
            )
     | _ -> raise (Bad_term_error s);;
 
-let parse_obj_line sys dir line =
+let sum_terms terms = 
+    fold1_left (fun x y -> Plus(x, y)) terms;;
+
+let parse_terms sys line =
     let elems = trim_split  "," line in
-    if List.length elems == 0 then raise (Parse_error("min: " ^ line));
-    let vars = List.map (parse_term sys) elems in
-    let obj_fun = fold1_left (fun x y -> Plus(x, y)) vars in
+    match elems with
+    | [] -> raise (Parse_error line)
+    | _  -> let terms = List.map (parse_term sys) elems in
+            sum_terms terms;;
+
+let parse_obj_line sys dir line =
+    let obj_fun = parse_terms sys line in
     sys.obj_fun <- obj_fun;
     sys.obj_dir <- dir;;
 
-let parse_cstr_line sys line = ();;
+(*
+let parse_op s =
+    match s with
+    | ">=" -> (Greater_Or_Equal)
+    | "<=" -> (Less_Or_Equal)
+    | "==" -> (Equal)
+    | _    -> raise (Bad_oper_error s);;
+*)
+
+let add_cstr sys lhs op rhs = ();;
+
+let parse_cstr_line sys cstr_name line =
+    let re = "^\\([^>=<]*\\)\\(<=\\|==\\|>=\\)\\([^>=<]*\\)$" in 
+    let ok = Str.string_match (Str.regexp re) line 0 in
+    match ok with
+    | true -> let lhs = (Str.matched_group 1 line) in
+              let op = (Str.matched_group 2 line) in
+              let rhs = (Str.matched_group 3 line) in
+              add_cstr sys (parse_terms sys lhs) op (parse_arb_int rhs)
+    | _    -> raise (Parse_error line);;
 
 let parse_vars_line sys line =
     let elems = trim_split "," line in
@@ -119,9 +154,9 @@ let parse_real_line sys line =
     let prefix = (List.hd elems) in
     if List.length elems != 2 then raise (Parse_error line);
     match prefix with
-    | "vars" -> parse_vars_line sys (hd (List.tl elems)); ()
-    | "min"  -> parse_obj_line sys OD_Min (hd (List.tl elems)); ()
-    | _      -> parse_cstr_line sys line; ();;
+    | "vars" -> parse_vars_line sys (List.nth elems 1)
+    | "min"  -> parse_obj_line sys OD_Min (List.nth elems 1)
+    | _      -> parse_cstr_line sys prefix (List.nth elems 1);;
 
 let parse_line sys line =
     match line with
