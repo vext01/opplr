@@ -76,12 +76,14 @@ let fold1_left f l =
     | x :: xs -> fold_left f x xs
     | []      -> raise Empty_list_error;;
 
+(* checked big integer parsing from a string *)
 let parse_arb_int s =
-    let not_ok = Str.string_match (Str.regexp "[^0-9]") s 0 in
-    match not_ok with
-    | true  -> raise (Bad_int_error s)
-    | false -> Gmp.Z.from_string s;;
-
+    let s' = BatString.trim s in 
+    try
+        Str.search_forward (Str.regexp "^[0-9]+$") s' 0;
+        Gmp.Z.from_string s'
+    with Not_found -> 
+        raise (Bad_int_error s);;
 
 (* ---[ Variables ]--- *)
 let add_var sys name =
@@ -98,16 +100,12 @@ let lookup_var_lx name sys = try
     | Not_found -> raise (Var_not_found_error name);;
 
 (* ---[ Parsing ]--- *)
-
 let parse_term (sys:cstr_sys) (s:string) : linear_expression =
     let elems = trim_split "*" s  in
-    match List.length elems with
-    | 1 -> lookup_var_lx (List.nth elems 0) sys
-    | 2 -> Times(
-            (parse_arb_int (List.nth elems 0)),
-            (lookup_var_lx (List.nth elems 1) sys)
-           )
-    | _ -> raise (Bad_term_error s);;
+    match elems with
+    | x::[]    -> lookup_var_lx x sys
+    | x::y::[] -> Times((parse_arb_int x), (lookup_var_lx y sys))
+    | _        -> raise (Bad_term_error s);;
 
 let sum_terms terms = 
     fold1_left (fun x y -> Plus(x, y)) terms;;
