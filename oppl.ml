@@ -9,6 +9,7 @@ open Ppl_ocaml;;
 
 exception Parse_error of string;;
 exception Duplicate_var_error of string;;
+exception Empty_list_error;;
 
 type obj_dir_t = OD_Min | OD_Max;;
 
@@ -16,13 +17,45 @@ type cstr_sys = {
     mutable obj_dir : obj_dir_t;
     mutable vars_fwd : int StringMap.t;
     mutable vars_bkw : string IntMap.t;
-    mutable vars_fwd_obj : Variable.t StringMap.t;
+    mutable vars_fwd_lx : linear_expression StringMap.t;
     mutable next_var_num : int;
-    (* obj *)
+    mutable obj_fun : linear_expression;
     (* cstrs *)
 };;
 
 (* ---[ Helpers ]--- *)
+
+let rec print_linear_expression = function
+    Variable v ->
+        print_string "V(";
+        print_int v;
+        print_string ")";
+  | Coefficient c ->
+          print_string(Gmp.Z.to_string c)
+  | Unary_Minus e ->
+          print_string "-(";
+          print_linear_expression e;
+          print_string ")";
+  | Unary_Plus e ->
+          print_linear_expression e
+  | Plus (e1, e2) ->
+          print_string "(";
+          print_linear_expression e1;
+          print_string " + ";
+          print_linear_expression e2;
+          print_string ")";
+  | Minus (e1, e2) ->
+          print_string "(";
+          print_linear_expression e1;
+          print_string " - ";
+          print_linear_expression e2;
+          print_string ")";
+  | Times (c, e) ->
+          print_string(Gmp.Z.to_string c);
+          print_string "*(";
+          print_linear_expression e;
+          print_string ")";
+;;
 
 (* Eg. "abc" =~ "^a" is true *)
 let (=~) s re = Str.string_match (Str.regexp re) s 0;;
@@ -33,6 +66,12 @@ let trim_split by line =
     let elems = Str.split (Str.regexp by) line in
     List.map (fun x -> BatString.trim x) elems;;
 
+let fold1_left f l = 
+    match l with
+    | x :: [] -> x
+    | x :: xs -> fold_left f x xs
+    | []      -> raise Empty_list_error;;
+
 (* ---[ Variables ]--- *)
 let add_var sys name =
     if StringMap.mem name sys.vars_fwd then
@@ -40,14 +79,17 @@ let add_var sys name =
     else
         sys.vars_fwd <- StringMap.add name sys.next_var_num sys.vars_fwd;
         sys.vars_bkw <- IntMap.add sys.next_var_num name sys.vars_bkw;
+        sys.vars_fwd_lx <- StringMap.add name (Variable sys.next_var_num) sys.vars_fwd_lx;
         sys.next_var_num <- sys.next_var_num + 1;;
 
 (* ---[ Parsing ]--- *)
-let parse_min_line sys line = 
+let parse_obj_line sys dir line =
     let elems = trim_split  "," line in
     if List.length elems == 0 then raise (Parse_error("min: " ^ line));
-
-    sys.obj_dir <- OD_Min;; (* XXX *)
+    let vars = List.map (fun x -> StringMap.find x sys.vars_fwd_lx) elems in
+    let obj_fun = fold1_left (fun x y -> Plus(x, y)) vars in
+    sys.obj_fun <- obj_fun;
+    sys.obj_dir <- dir;;
 
 let parse_cstr_line sys line = ();;
 
@@ -61,7 +103,7 @@ let parse_real_line sys line =
     if List.length elems != 2 then raise (Parse_error line);
     match prefix with
     | "vars" -> parse_vars_line sys (hd (List.tl elems)); ()
-    | "min"  -> parse_min_line sys (hd (List.tl elems)); ()
+    | "min"  -> parse_obj_line sys OD_Min (hd (List.tl elems)); ()
     | _      -> parse_cstr_line sys line; ();;
 
 let parse_line sys line =
@@ -82,8 +124,14 @@ let sys = {
     obj_dir = OD_Min;
     vars_fwd = StringMap.empty;
     vars_bkw = IntMap.empty;
+    vars_fwd_lx = StringMap.empty;
     next_var_num = 0;
+    obj_fun = Coefficient (Gmp.Z.of_int 0);
 };;
 
+(* let test = Plus ((Variable 1), (Variable 2));; *)
 parse sys "test_input.opl";;
 Printf.printf "Variables: %d\n" sys.next_var_num;;
+print_string("Objective Func: \n");;
+print_linear_expression sys.obj_fun;;
+print_string("\n");;
