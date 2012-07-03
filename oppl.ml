@@ -16,6 +16,7 @@ type cstr_sys = {
     mutable obj_dir : obj_dir_t;
     mutable vars_fwd : int StringMap.t;
     mutable vars_bkw : string IntMap.t;
+    mutable vars_fwd_obj : Variable.t StringMap.t;
     mutable next_var_num : int;
     (* obj *)
     (* cstrs *)
