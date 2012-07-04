@@ -17,7 +17,7 @@ exception Bad_int_error of string;;
 exception Bad_oper_error of string;;
 exception Solver_error of string;;
 
-type var_val = VarVal of string * Gmp.Z.t;;
+type var_val = VarVal of string * Gmp.Q.t;;
 
 type cstr_sys = {
     mutable obj_dir : Ppl_ocaml.optimization_mode;
@@ -156,6 +156,9 @@ let parse_terms sys line =
 
 let parse_obj_line sys dir line =
     let obj_fun = parse_terms sys line in
+    print_string "\nAdding Objective Function: ";
+    print_linear_expression obj_fun;
+    print_string "\n";
     sys.obj_fun <- obj_fun;
     sys.obj_dir <- dir;;
 
@@ -199,7 +202,7 @@ let parse sys filename =
 (* ---[ Solving ]--- *)
 
 let print_result (VarVal(name, value)) : unit =
-    Printf.printf "%s=%s\n" name (Gmp.Z.to_string value);;
+    Printf.printf "%s=%s\n" name (Gmp.Q.to_string value);;
 
 let print_results sys =
     List.iter (print_result) sys.result;;
@@ -209,24 +212,27 @@ let get_col_from_expression (lx:linear_expression) : int =
     | Variable(col) -> col
     | _ -> raise (Solver_error "unexpected non-Variable expression");;
 
-let rec parse_result_expression sys (lx:linear_expression) = 
+let rec parse_result_expression sys (lx:linear_expression) denom = 
     match lx with
     | Plus (e1, e2) ->
-            parse_result_expression sys e1;
-            parse_result_expression sys e2;
+            parse_result_expression sys e1 denom;
+            parse_result_expression sys e2 denom;
     | Times (zval, col) ->
+            let qval =  Gmp.Q.from_zs zval denom in
             let name = lookup_var_col_from_lx (get_col_from_expression  col) sys in
-                sys.result <- List.append sys.result (VarVal(name, zval)::[])
+                sys.result <- List.append sys.result (VarVal(name, qval)::[])
     | _ -> 
             raise (Solver_error "Bad result expression from solver?");;
 
 let get_result sys mip = 
     let pt = ppl_MIP_Problem_optimizing_point mip in
     match pt with
-    | Point(lx, num) ->
+    | Point(lx, denom) ->
             print_string "\nResult Expression:\n";
             print_linear_expression lx;
-            parse_result_expression sys lx;
+            parse_result_expression sys lx denom;
+            print_string "\nDenominator:";
+            print_string (Gmp.Z.to_string denom);
             print_string "\n"
     | _ -> raise (Solver_error "solution was not a point");;
 
@@ -245,7 +251,7 @@ let sys = {
     vars_bkw = IntMap.empty;
     vars_fwd_lx = StringMap.empty;
     next_var_num = 0;
-    obj_fun = Coefficient (Gmp.Z.of_int 0);
+    obj_fun = Coefficient Gmp.Z.zero;
     cstrs = [];
     result = [];
 };;
