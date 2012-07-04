@@ -41,16 +41,18 @@ type var_val = VarVal of string * Gmp.Q.t;;
 type var_type = IntegerVar | RationalVar | BinaryVar;;
 
 type cstr_sys = {
-    mutable obj_dir : Ppl_ocaml.optimization_mode;
-    mutable vars_fwd : int StringMap.t;
-    mutable vars_fwd_types : var_type StringMap.t;
-    mutable vars_bkw : string IntMap.t;
-    mutable vars_fwd_lx : linear_expression StringMap.t;
-    mutable next_var_num : int;
+    (* variable mappings *)
+    mutable map_varname_to_col : int StringMap.t;
+    mutable map_varname_to_type : var_type StringMap.t;
+    mutable map_varcol_to_name : string IntMap.t;
+    mutable map_varname_to_lexpr : linear_expression StringMap.t;
+    (* MILP problem description *)
     mutable obj_fun : linear_expression;
+    mutable obj_dir : Ppl_ocaml.optimization_mode;
     mutable cstrs : linear_constraint list;
-    mutable result : var_val list; 
     mutable result_map : Gmp.Q.t StringMap.t;
+    (* Misc *)
+    mutable next_var_num : int;
 };;
 
 (* ---[ Helpers ]--- *)
@@ -132,25 +134,25 @@ let parse_arb_int s =
 
 (* ---[ Variables ]--- *)
 let add_var sys vtype name =
-    if StringMap.mem name sys.vars_fwd then
+    if StringMap.mem name sys.map_varname_to_col then
         raise (Duplicate_var_error name)
     else
-        sys.vars_fwd <- StringMap.add name sys.next_var_num sys.vars_fwd;
-        sys.vars_bkw <- IntMap.add sys.next_var_num name sys.vars_bkw;
-        sys.vars_fwd_lx <- StringMap.add name (Variable sys.next_var_num) sys.vars_fwd_lx;
+        sys.map_varname_to_col <- StringMap.add name sys.next_var_num sys.map_varname_to_col;
+        sys.map_varcol_to_name <- IntMap.add sys.next_var_num name sys.map_varcol_to_name;
+        sys.map_varname_to_lexpr <- StringMap.add name (Variable sys.next_var_num) sys.map_varname_to_lexpr;
         sys.next_var_num <- sys.next_var_num + 1;
-        sys.vars_fwd_types <- StringMap.add name vtype sys.vars_fwd_types;;
+        sys.map_varname_to_type <- StringMap.add name vtype sys.map_varname_to_type;;
 
-let lookup_var_lx sys name = try
-    StringMap.find name sys.vars_fwd_lx with
+let lookup_lexpr_from_varname sys name = try
+    StringMap.find name sys.map_varname_to_lexpr with
     | Not_found -> raise (Var_not_found_error name);;
 
-let lookup_var_col_from_lx sys col = try
-    IntMap.find col sys.vars_bkw with
+let lookup_var_col_from_lexpr sys col = try
+    IntMap.find col sys.map_varcol_to_name with
     | Not_found -> raise (Col_not_found_error col);;
 
 let lookup_var_col_from_name sys name = try
-    StringMap.find name sys.vars_fwd with
+    StringMap.find name sys.map_varname_to_col with
     | Not_found -> raise (Var_not_found_error name);;
 
 let is_z_var ty =
@@ -170,7 +172,7 @@ let is_b_var ty =
 
 (* Add 0 <= b <= 1 for a binary variable b *)
 let constrain_binary_var sys mip name = 
-    let lhs = lookup_var_lx sys name in
+    let lhs = lookup_lexpr_from_varname sys name in
     let lobo = Greater_Or_Equal(lhs, Coefficient Gmp.Z.zero) in
     let upbo = Less_Or_Equal(lhs, Coefficient Gmp.Z.one) in
     ppl_MIP_Problem_add_constraint mip lobo;
@@ -180,8 +182,8 @@ let constrain_binary_var sys mip name =
     print_linear_constraint upbo;;
 
 let type_vars sys mip =
-    let z_vars = StringMap.filter is_z_var sys.vars_fwd_types in
-    let b_vars = StringMap.filter is_b_var sys.vars_fwd_types in
+    let z_vars = StringMap.filter is_z_var sys.map_varname_to_type in
+    let b_vars = StringMap.filter is_b_var sys.map_varname_to_type in
     let z_cols = [? lookup_var_col_from_name sys x | x <- (StringMap.keys z_vars) ?] in 
     let b_cols = [? lookup_var_col_from_name sys x | x <- (StringMap.keys b_vars) ?] in
     Ppl_ocaml.ppl_MIP_Problem_add_to_integer_space_dimensions mip (List.of_enum z_cols);
@@ -189,7 +191,7 @@ let type_vars sys mip =
     List.iter (constrain_binary_var sys mip) (List.of_enum (StringMap.keys b_vars));;
 
 let number_of_bin_vars sys =
-    let z_vars = StringMap.filter is_z_var sys.vars_fwd_types in
+    let z_vars = StringMap.filter is_z_var sys.map_varname_to_type in
     let keys = StringMap.keys z_vars in
     List.length (List.of_enum keys);;
 
@@ -208,8 +210,8 @@ let add_cstr sys lhs op rhs =
 let parse_term (sys:cstr_sys) (s:string) : linear_expression =
     let elems = trim_split "*" s  in
     match elems with
-    | x::[]    -> lookup_var_lx sys x
-    | x::y::[] -> Times((parse_arb_int x), (lookup_var_lx sys y))
+    | x::[]    -> lookup_lexpr_from_varname sys x
+    | x::y::[] -> Times((parse_arb_int x), (lookup_lexpr_from_varname sys y))
     | _        -> raise (Bad_term_error s);;
 
 let sum_terms terms = 
@@ -289,7 +291,7 @@ let rec parse_result_expression sys (lx:linear_expression) denom =
             parse_result_expression sys e2 denom;
     | Times (zval, col) ->
             let qval =  Gmp.Q.from_zs zval denom in
-            let name = lookup_var_col_from_lx sys (get_col_from_expression col) in
+            let name = lookup_var_col_from_lexpr sys (get_col_from_expression col) in
                 sys.result_map <- StringMap.add name qval sys.result_map
     | _ -> 
             raise (Solver_error "Bad result expression from solver?");;
@@ -297,7 +299,7 @@ let rec parse_result_expression sys (lx:linear_expression) denom =
 let init_result_map sys =
     let curry = fun sys vname ->
         sys.result_map <- (StringMap.add vname Gmp.Q.zero sys.result_map) in
-    List.iter (curry sys) (List.of_enum (StringMap.keys sys.vars_fwd));;
+    List.iter (curry sys) (List.of_enum (StringMap.keys sys.map_varname_to_col));;
 
 let get_result sys mip = 
     (* first fill the result mapping wit zeroes values, this is
@@ -336,14 +338,13 @@ let get_filename =
 
 let sys = {
     obj_dir = Ppl_ocaml.Minimization;
-    vars_fwd = StringMap.empty;
-    vars_fwd_types = StringMap.empty;
-    vars_bkw = IntMap.empty;
-    vars_fwd_lx = StringMap.empty;
+    map_varname_to_col = StringMap.empty;
+    map_varname_to_type = StringMap.empty;
+    map_varcol_to_name = IntMap.empty;
+    map_varname_to_lexpr = StringMap.empty;
     next_var_num = 0;
     obj_fun = Coefficient Gmp.Z.zero;
     cstrs = [];
-    result = [];
     result_map = StringMap.empty;
 };;
 
