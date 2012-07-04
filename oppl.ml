@@ -176,10 +176,7 @@ let constrain_binary_var sys mip name =
     let lobo = Greater_Or_Equal(lhs, Coefficient Gmp.Z.zero) in
     let upbo = Less_Or_Equal(lhs, Coefficient Gmp.Z.one) in
     ppl_MIP_Problem_add_constraint mip lobo;
-    ppl_MIP_Problem_add_constraint mip upbo;
-    Printf.printf "New bin var: %s\n" name;
-    print_linear_constraint lobo;
-    print_linear_constraint upbo;;
+    ppl_MIP_Problem_add_constraint mip upbo;;
 
 let type_vars sys mip =
     let z_vars = StringMap.filter is_z_var sys.map_varname_to_type in
@@ -202,8 +199,6 @@ let add_cstr sys lhs op rhs =
     | "<=" -> Less_Or_Equal(lhs, rhs)
     | "==" -> Equal(lhs, rhs)
     | _    -> raise (Bad_oper_error op) in
-    print_string "New linear constraint: ";
-    print_linear_constraint lc;
     sys.cstrs <- List.append sys.cstrs [lc];;
 
 (* ---[ Parsing ]--- *)
@@ -226,9 +221,6 @@ let parse_terms sys line =
 
 let parse_obj_line sys dir line =
     let obj_fun = parse_terms sys line in
-    print_string "\nAdding Objective Function: ";
-    print_linear_expression obj_fun;
-    print_string "\n";
     sys.obj_fun <- obj_fun;
     sys.obj_dir <- dir;;
 
@@ -311,15 +303,8 @@ let get_result sys mip =
     init_result_map sys;
     let pt = ppl_MIP_Problem_optimizing_point mip in
     match pt with
-    | Point(lx, denom) ->
-            print_string "\nResult Expression:\n";
-            print_linear_expression lx;
-            parse_result_expression sys lx denom;
-            print_string "\nDenominator:";
-            print_string (Gmp.Z.to_string denom);
-            print_string "\n"
+    | Point(lx, denom) -> parse_result_expression sys lx denom;
     | _ -> raise (Solver_error "solution was not a point");;
-
 
 let solve (sys:cstr_sys) =
     let n_cstrs = List.length sys.cstrs + ((number_of_bin_vars sys) * 2) in
