@@ -4,6 +4,7 @@ open BatMap;;
 open List;;
 open Printf;;
 open Ppl_ocaml;;
+open Sys;;
 
 (* ---[ Types ]--- *)
 
@@ -16,6 +17,7 @@ exception Bad_term_error of string;;
 exception Bad_int_error of string;;
 exception Bad_oper_error of string;;
 exception Solver_error of string;;
+exception Usage_error of string;;
 
 type var_val = VarVal of string * Gmp.Q.t;;
 
@@ -245,6 +247,12 @@ let solve (sys:cstr_sys) =
     | _                     -> raise (Solver_error "NOT OPTIMAL");;
 
 (* ---[ MAIN ]--- *)
+
+let get_filename = 
+    try
+        Array.get Sys.argv 1
+    with Invalid_argument(x) -> raise (Usage_error "usage: oppl <filename>");;
+
 let sys = {
     obj_dir = Ppl_ocaml.Minimization;
     vars_fwd = StringMap.empty;
@@ -256,10 +264,12 @@ let sys = {
     result = [];
 };;
 
-(* let test = Plus ((Variable 1), (Variable 2));; *)
-print_string "\n";;
-parse sys "test_input.opl";;
-print_string "\n\nConstraint system loaded:\n";;
+let oppl_version = "0.1";;
+let oppl_years = "2012";;
+Printf.printf "\nOPPL Version %s\n(C) Edd Barrett %s\n\n" oppl_version oppl_years;;
+
+parse sys get_filename;;
+print_string "\nConstraint system loaded:\n";;
 Printf.printf "Variables: %d\n" sys.next_var_num;;
 print_string("Objective Func: \n");;
 Printf.printf "Constraints: %d\n" (List.length sys.cstrs);;

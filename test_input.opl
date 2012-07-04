@@ -1,5 +1,5 @@
 vars: x, y
-max:x,y
+min:x,y
 # comment
-cstr1:y >= 666666666666666666666666666666
-cstr2: 2*x,-1*y == 0
+cstr1:y >= 666
+cstr2: 2*x,-1*y == 1
