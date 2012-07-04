@@ -21,6 +21,9 @@ open List;;
 open Printf;;
 open Ppl_ocaml;;
 open Sys;;
+open BatList;;
+open Batteries_uni;;
+
 
 (* ---[ Types ]--- *)
 
@@ -106,7 +109,8 @@ let print_linear_constraint lc =
 (* Eg. "abc" =~ "^a" is true *)
 let (=~) s re = Str.string_match (Str.regexp re) s 0;;
 
-let print_str_list l = List.iter (fun x -> print_string x) l;;
+let print_str_list l = List.iter (fun x -> print_string x) l; print_string "\n";;
+let print_int_list l = List.iter (fun x -> print_int x) l; print_string "\n";;
 
 let trim_split by line =
     let elems = Str.split (Str.regexp by) line in
@@ -134,7 +138,8 @@ let add_var sys vtype name =
         sys.vars_fwd <- StringMap.add name sys.next_var_num sys.vars_fwd;
         sys.vars_bkw <- IntMap.add sys.next_var_num name sys.vars_bkw;
         sys.vars_fwd_lx <- StringMap.add name (Variable sys.next_var_num) sys.vars_fwd_lx;
-        sys.next_var_num <- sys.next_var_num + 1;;
+        sys.next_var_num <- sys.next_var_num + 1;
+        sys.vars_fwd_types <- StringMap.add name vtype sys.vars_fwd_types;;
 
 let lookup_var_lx sys name = try
     StringMap.find name sys.vars_fwd_lx with
@@ -150,8 +155,8 @@ let lookup_var_col_from_name sys name = try
 
 (*
 let type_vars sys vnames vtype = 
-    let cols = List.map (lookup_var_col_from_name 
-    *)
+    let cols = List.map (lookup_var_col_from_name sys) vnames in ();;
+*)
 
 (* ---[ Constraints ]--- *)
 let add_cstr sys lhs op rhs =
@@ -266,9 +271,38 @@ let get_result sys mip =
             print_string "\n"
     | _ -> raise (Solver_error "solution was not a point");;
 
+(* places type restrictions on variables prior to solving *)
+(*
+let type_vars sys = 
+    let z_vars = ref [] in
+    let get_lists = fun z_vars name vtype ->
+        match vtype with
+        | IntegerVar -> z_vars <- List.add name z_vars
+        | _ -> ()  in
+    StringMap.iter get_lists sys.vars_fwd_types;;
+*)
+
+let is_z_var ty =
+    match ty with
+    | IntegerVar -> true
+    | _ -> false;;
+
+let is_q_var ty =
+    match ty with
+    | RationalVar -> true
+    | _ -> false;;
+
+let type_vars sys mip =
+    let z_vars = StringMap.filter is_z_var sys.vars_fwd_types in
+    (* let q_vars = StringMap.filter is_q_var sys.vars_fwd_types in *)
+    let z_cols = [? lookup_var_col_from_name sys x | x <- (StringMap.keys z_vars) ?] in 
+    (* let q_cols = [? lookup_var_col_from_name sys x | x <- (StringMap.keys q_vars) ?] in  *)
+    Ppl_ocaml.ppl_MIP_Problem_add_to_integer_space_dimensions mip (List.of_enum z_cols);;
+
 let solve (sys:cstr_sys) =
     let n_cstrs = List.length sys.cstrs in 
     let mip = ppl_new_MIP_Problem n_cstrs sys.cstrs sys.obj_fun sys.obj_dir in
+    ignore (type_vars sys mip);
     let status = ppl_MIP_Problem_solve mip in
     match status with
     | Optimized_Mip_Problem -> get_result sys mip
