@@ -242,7 +242,7 @@ let solve (sys:cstr_sys) =
     let status = ppl_MIP_Problem_solve mip in
     match status with
     | Optimized_Mip_Problem -> get_result sys mip
-    | _                     -> raise (Solver_error "NOT OPTIMAL\n");;
+    | _                     -> raise (Solver_error "NOT OPTIMAL");;
 
 (* ---[ MAIN ]--- *)
 let sys = {
