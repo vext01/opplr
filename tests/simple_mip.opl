@@ -1,8 +1,10 @@
 int_vars: x, y
+bin_vars: f,g
 vars: a, b
-min:x,y
+min:x,y,2*f,g
 # comment
-cstr1:y >= 3
+cstr1: y >= 3
 cstr2: 2*x,-1*y == 0
-cstr4: b == 3
-cstr3: 2*a,-1*b == 0
+cstr3: b == 3
+cstr4: 2*a,-1*b == 0
+cstr5: f,g >= 2

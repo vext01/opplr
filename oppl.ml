@@ -24,7 +24,6 @@ open Sys;;
 open BatList;;
 open Batteries_uni;;
 
-
 (* ---[ Types ]--- *)
 
 exception Parse_error of string;;
@@ -298,8 +297,17 @@ let is_b_var ty =
     | BinaryVar -> true
     | _ -> false;;
 
-(* Add 0 <= b <= 1 for each b in binary vars *)
-let constrain_binary_vars mip cols = ();; (* XXX *)
+
+(* Add 0 <= b <= 1 for a binary variable b *)
+let constrain_binary_var sys mip name = 
+    let lhs = lookup_var_lx sys name in
+    let lobo = Greater_Or_Equal(lhs, Coefficient Gmp.Z.zero) in
+    let upbo = Less_Or_Equal(lhs, Coefficient Gmp.Z.one) in
+    ppl_MIP_Problem_add_constraint mip lobo;
+    ppl_MIP_Problem_add_constraint mip upbo;
+    Printf.printf "New bin var: %s\n" name;
+    print_linear_constraint lobo;
+    print_linear_constraint upbo;;
 
 let type_vars sys mip =
     let z_vars = StringMap.filter is_z_var sys.vars_fwd_types in
@@ -308,10 +316,16 @@ let type_vars sys mip =
     let b_cols = [? lookup_var_col_from_name sys x | x <- (StringMap.keys b_vars) ?] in
     Ppl_ocaml.ppl_MIP_Problem_add_to_integer_space_dimensions mip (List.of_enum z_cols);
     Ppl_ocaml.ppl_MIP_Problem_add_to_integer_space_dimensions mip (List.of_enum b_cols);
-    constrain_binary_vars mip b_vars;;
+    List.iter (constrain_binary_var sys mip) (List.of_enum (StringMap.keys b_vars));;
+
+let number_of_bin_vars sys =
+    let z_vars = StringMap.filter is_z_var sys.vars_fwd_types in
+    let keys = StringMap.keys z_vars in
+    List.length (List.of_enum keys);;
 
 let solve (sys:cstr_sys) =
-    let n_cstrs = List.length sys.cstrs in 
+    let n_cstrs = List.length sys.cstrs + ((number_of_bin_vars sys) * 2) in
+    (* because of two extra cstrs 0 <= b <= 1 for BinVar *)
     let mip = ppl_new_MIP_Problem n_cstrs sys.cstrs sys.obj_fun sys.obj_dir in
     ignore (type_vars sys mip);
     let status = ppl_MIP_Problem_solve mip in
@@ -347,6 +361,7 @@ parse sys get_filename;;
 print_string "Constraint system loaded:\n";;
 Printf.printf "Variables: %d\n" sys.next_var_num;;
 print_string("Objective Func: \n");;
-Printf.printf "Constraints: %d\n" (List.length sys.cstrs);;
+print_linear_expression sys.obj_fun;;
+Printf.printf "\n\nConstraints: %d\n" (List.length sys.cstrs);;
 let res = solve sys;;
 print_results sys;;
