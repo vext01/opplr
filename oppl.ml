@@ -273,11 +273,13 @@ let parse sys filename =
 
 (* ---[ Solving ]--- *)
 
-let print_result vname qval =
-    Printf.printf "%s=%s\n" vname (Gmp.Q.to_string qval);;
+let write_result outfile vname qval =
+    Printf.fprintf outfile "%s=%s\n" vname (Gmp.Q.to_string qval);;
 
-let print_results sys =
-    StringMap.iter print_result sys.result_map;;
+let write_results sys out_filename =
+    let outfile = open_out out_filename in
+    StringMap.iter (write_result outfile) sys.result_map;
+    close_out outfile;;
 
 let get_col_from_expression (lx:linear_expression) : int =
     match lx with
@@ -331,10 +333,10 @@ let solve (sys:cstr_sys) =
 
 (* ---[ MAIN ]--- *)
 
-let get_filename = 
+let get_filenames = 
     try
-        Array.get Sys.argv 1
-    with Invalid_argument(x) -> raise (Usage_error "usage: oppl <filename>");;
+        (Array.get Sys.argv 1, Array.get Sys.argv 2)
+    with Invalid_argument(x) -> raise (Usage_error "usage: oppl <filename> <outfile>");;
 
 let sys = {
     obj_dir = Ppl_ocaml.Minimization;
@@ -348,11 +350,8 @@ let sys = {
     result_map = StringMap.empty;
 };;
 
-let oppl_version = "0.1";;
-let oppl_years = "2012";;
-Printf.printf "\nOPPL Version %s\n(C) Edd Barrett %s\n" oppl_version oppl_years;;
-print_string "-----------------------------------------\n";;
-
+(* sometimes useful for debug *)
+(*
 parse sys get_filename;;
 print_string "Constraint system loaded:\n";;
 Printf.printf "Variables: %d\n" sys.next_var_num;;
@@ -361,4 +360,9 @@ print_linear_expression sys.obj_fun;;
 Printf.printf "\n\nConstraints: %d\n" (List.length sys.cstrs);;
 let res = solve sys;;
 Printf.printf "\nResult:\n";;
-print_results sys;;
+*)
+
+let (infile, outfile) = get_filenames;;
+parse sys infile;;
+let res = solve sys;;
+write_results sys outfile;;
