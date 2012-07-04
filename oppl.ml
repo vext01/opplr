@@ -36,10 +36,12 @@ exception Solver_error of string;;
 exception Usage_error of string;;
 
 type var_val = VarVal of string * Gmp.Q.t;;
+type var_type = IntegerVar | RationalVar;;
 
 type cstr_sys = {
     mutable obj_dir : Ppl_ocaml.optimization_mode;
     mutable vars_fwd : int StringMap.t;
+    mutable vars_fwd_types : var_type StringMap.t;
     mutable vars_bkw : string IntMap.t;
     mutable vars_fwd_lx : linear_expression StringMap.t;
     mutable next_var_num : int;
@@ -125,7 +127,7 @@ let parse_arb_int s =
     with Not_found -> raise (Bad_int_error s);;
 
 (* ---[ Variables ]--- *)
-let add_var sys name =
+let add_var sys vtype name =
     if StringMap.mem name sys.vars_fwd then
         raise (Duplicate_var_error name)
     else
@@ -134,14 +136,22 @@ let add_var sys name =
         sys.vars_fwd_lx <- StringMap.add name (Variable sys.next_var_num) sys.vars_fwd_lx;
         sys.next_var_num <- sys.next_var_num + 1;;
 
-let lookup_var_lx name sys = try
+let lookup_var_lx sys name = try
     StringMap.find name sys.vars_fwd_lx with
     | Not_found -> raise (Var_not_found_error name);;
 
-let lookup_var_col_from_lx col sys = try
+let lookup_var_col_from_lx sys col = try
     IntMap.find col sys.vars_bkw with
     | Not_found -> raise (Col_not_found_error col);;
 
+let lookup_var_col_from_name sys name = try
+    StringMap.find name sys.vars_fwd with
+    | Not_found -> raise (Var_not_found_error name);;
+
+(*
+let type_vars sys vnames vtype = 
+    let cols = List.map (lookup_var_col_from_name 
+    *)
 
 (* ---[ Constraints ]--- *)
 let add_cstr sys lhs op rhs =
@@ -158,8 +168,8 @@ let add_cstr sys lhs op rhs =
 let parse_term (sys:cstr_sys) (s:string) : linear_expression =
     let elems = trim_split "*" s  in
     match elems with
-    | x::[]    -> lookup_var_lx x sys
-    | x::y::[] -> Times((parse_arb_int x), (lookup_var_lx y sys))
+    | x::[]    -> lookup_var_lx sys x
+    | x::y::[] -> Times((parse_arb_int x), (lookup_var_lx sys y))
     | _        -> raise (Bad_term_error s);;
 
 let sum_terms terms = 
@@ -190,16 +200,18 @@ let parse_cstr_line sys cstr_name line =
               add_cstr sys (parse_terms sys lhs) op (Coefficient (parse_arb_int rhs))
     | _    -> raise (Parse_error line);;
 
-let parse_vars_line sys line =
+let parse_vars_line sys vtype line =
     let elems = trim_split "," line in
-    List.iter (add_var sys) elems; ();;
+    List.iter (add_var sys vtype) elems; ();;
+    (*type_vars sys vtype elems;; *)
 
 let parse_real_line sys line =
     let elems = trim_split ":" line in
     let prefix = (List.hd elems) in
     if List.length elems != 2 then raise (Parse_error line);
     match prefix with
-    | "vars" -> parse_vars_line sys (List.nth elems 1)
+    | "vars" -> parse_vars_line sys RationalVar (List.nth elems 1)
+    | "int_vars" -> parse_vars_line sys IntegerVar (List.nth elems 1) 
     | "min"  -> parse_obj_line sys Ppl_ocaml.Minimization (List.nth elems 1)
     | "max"  -> parse_obj_line sys Ppl_ocaml.Maximization (List.nth elems 1)
     | _      -> parse_cstr_line sys prefix (List.nth elems 1);;
@@ -237,7 +249,7 @@ let rec parse_result_expression sys (lx:linear_expression) denom =
             parse_result_expression sys e2 denom;
     | Times (zval, col) ->
             let qval =  Gmp.Q.from_zs zval denom in
-            let name = lookup_var_col_from_lx (get_col_from_expression  col) sys in
+            let name = lookup_var_col_from_lx sys (get_col_from_expression  col) in
                 sys.result <- List.append sys.result (VarVal(name, qval)::[])
     | _ -> 
             raise (Solver_error "Bad result expression from solver?");;
@@ -272,6 +284,7 @@ let get_filename =
 let sys = {
     obj_dir = Ppl_ocaml.Minimization;
     vars_fwd = StringMap.empty;
+    vars_fwd_types = StringMap.empty;
     vars_bkw = IntMap.empty;
     vars_fwd_lx = StringMap.empty;
     next_var_num = 0;
