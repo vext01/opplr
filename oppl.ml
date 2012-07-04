@@ -50,6 +50,7 @@ type cstr_sys = {
     mutable obj_fun : linear_expression;
     mutable cstrs : linear_constraint list;
     mutable result : var_val list; 
+    mutable result_map : Gmp.Q.t StringMap.t;
 };;
 
 (* ---[ Helpers ]--- *)
@@ -236,11 +237,14 @@ let parse sys filename =
 
 (* ---[ Solving ]--- *)
 
-let print_result (VarVal(name, value)) : unit =
-    Printf.printf "%s=%s\n" name (Gmp.Q.to_string value);;
+let print_result vname qval =
+    Printf.printf "%s=%s\n" vname (Gmp.Q.to_string qval);;
 
 let print_results sys =
+    StringMap.iter print_result sys.result_map;;
+(*
     List.iter (print_result) sys.result;;
+*)
 
 let get_col_from_expression (lx:linear_expression) : int =
     match lx with
@@ -254,12 +258,22 @@ let rec parse_result_expression sys (lx:linear_expression) denom =
             parse_result_expression sys e2 denom;
     | Times (zval, col) ->
             let qval =  Gmp.Q.from_zs zval denom in
-            let name = lookup_var_col_from_lx sys (get_col_from_expression  col) in
-                sys.result <- List.append sys.result (VarVal(name, qval)::[])
+            let name = lookup_var_col_from_lx sys (get_col_from_expression col) in
+                sys.result_map <- StringMap.add name qval sys.result_map
     | _ -> 
             raise (Solver_error "Bad result expression from solver?");;
 
+let init_result_map sys =
+    let curry = fun sys vname ->
+        sys.result_map <- (StringMap.add vname Gmp.Q.zero sys.result_map) in
+    List.iter (curry sys) (List.of_enum (StringMap.keys sys.vars_fwd));;
+
 let get_result sys mip = 
+    (* first fill the result mapping wit zeroes values, this is
+     * because a variable with a 0 coeff in the solution will not
+     * appear in the result expression
+     *)
+    init_result_map sys;
     let pt = ppl_MIP_Problem_optimizing_point mip in
     match pt with
     | Point(lx, denom) ->
@@ -350,6 +364,7 @@ let sys = {
     obj_fun = Coefficient Gmp.Z.zero;
     cstrs = [];
     result = [];
+    result_map = StringMap.empty;
 };;
 
 let oppl_version = "0.1";;
