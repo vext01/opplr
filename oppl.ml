@@ -51,6 +51,7 @@ type cstr_sys = {
     mutable obj_dir : Ppl_ocaml.optimization_mode;
     mutable cstrs : linear_constraint list;
     mutable result_map : Gmp.Q.t StringMap.t;
+    mutable obj_val : Gmp.Q.t;
     (* Misc *)
     mutable next_var_num : int;
 };;
@@ -265,12 +266,13 @@ let parse sys filename =
 
 (* ---[ Solving ]--- *)
 
-let write_result outfile vname qval =
+let write_var_result outfile vname qval =
     Printf.fprintf outfile "%s=%s\n" vname (Gmp.Q.to_string qval);;
 
 let write_results sys out_filename =
     let outfile = open_out out_filename in
-    StringMap.iter (write_result outfile) sys.result_map;
+    Printf.fprintf outfile "OBJECTIVE=%s\n" (Gmp.Q.to_string sys.obj_val);
+    StringMap.iter (write_var_result outfile) sys.result_map;
     close_out outfile;;
 
 let get_col_from_expression (lx:linear_expression) : int =
@@ -301,6 +303,10 @@ let get_result sys mip =
      * appear in the result expression
      *)
     init_result_map sys;
+    (* stash objective value *)
+    let (enu, denom) = ppl_MIP_Problem_optimal_value mip in
+    sys.obj_val <- Gmp.Q.from_zs enu denom;
+    (* extract variable assignments *)
     let pt = ppl_MIP_Problem_optimizing_point mip in
     match pt with
     | Point(lx, denom) -> parse_result_expression sys lx denom;
@@ -333,6 +339,7 @@ let sys = {
     obj_fun = Coefficient Gmp.Z.zero;
     cstrs = [];
     result_map = StringMap.empty;
+    obj_val = Gmp.Q.zero;
 };;
 
 (* sometimes useful for debug *)
