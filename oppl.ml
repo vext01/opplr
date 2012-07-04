@@ -39,7 +39,7 @@ exception Solver_error of string;;
 exception Usage_error of string;;
 
 type var_val = VarVal of string * Gmp.Q.t;;
-type var_type = IntegerVar | RationalVar;;
+type var_type = IntegerVar | RationalVar | BinaryVar;;
 
 type cstr_sys = {
     mutable obj_dir : Ppl_ocaml.optimization_mode;
@@ -217,6 +217,7 @@ let parse_real_line sys line =
     match prefix with
     | "vars" -> parse_vars_line sys RationalVar (List.nth elems 1)
     | "int_vars" -> parse_vars_line sys IntegerVar (List.nth elems 1) 
+    | "bin_vars" -> parse_vars_line sys BinaryVar (List.nth elems 1) 
     | "min"  -> parse_obj_line sys Ppl_ocaml.Minimization (List.nth elems 1)
     | "max"  -> parse_obj_line sys Ppl_ocaml.Maximization (List.nth elems 1)
     | _      -> parse_cstr_line sys prefix (List.nth elems 1);;
@@ -292,12 +293,22 @@ let is_q_var ty =
     | RationalVar -> true
     | _ -> false;;
 
+let is_b_var ty =
+    match ty with
+    | BinaryVar -> true
+    | _ -> false;;
+
+(* Add 0 <= b <= 1 for each b in binary vars *)
+let constrain_binary_vars mip cols = ();; (* XXX *)
+
 let type_vars sys mip =
     let z_vars = StringMap.filter is_z_var sys.vars_fwd_types in
-    (* let q_vars = StringMap.filter is_q_var sys.vars_fwd_types in *)
+    let b_vars = StringMap.filter is_b_var sys.vars_fwd_types in
     let z_cols = [? lookup_var_col_from_name sys x | x <- (StringMap.keys z_vars) ?] in 
-    (* let q_cols = [? lookup_var_col_from_name sys x | x <- (StringMap.keys q_vars) ?] in  *)
-    Ppl_ocaml.ppl_MIP_Problem_add_to_integer_space_dimensions mip (List.of_enum z_cols);;
+    let b_cols = [? lookup_var_col_from_name sys x | x <- (StringMap.keys b_vars) ?] in
+    Ppl_ocaml.ppl_MIP_Problem_add_to_integer_space_dimensions mip (List.of_enum z_cols);
+    Ppl_ocaml.ppl_MIP_Problem_add_to_integer_space_dimensions mip (List.of_enum b_cols);
+    constrain_binary_vars mip b_vars;;
 
 let solve (sys:cstr_sys) =
     let n_cstrs = List.length sys.cstrs in 
