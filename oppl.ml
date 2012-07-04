@@ -64,6 +64,25 @@ let rec print_linear_expression = function
           print_string ")";
 ;;
 
+let print_linear_constraint lc =
+    match lc with
+    | Equal(lhs, rhs) ->
+        print_linear_expression lhs;
+        print_string "=";
+        print_linear_expression rhs;
+        print_string "\n"
+    | Less_Or_Equal(lhs, rhs) ->
+        print_linear_expression lhs;
+        print_string "<=";
+        print_linear_expression rhs;
+        print_string "\n"
+    | Greater_Or_Equal(lhs, rhs) ->
+        print_linear_expression lhs;
+        print_string ">=";
+        print_linear_expression rhs;
+        print_string "\n"
+    | _ -> raise (Bad_oper_error "unknown relation");;
+
 (* Eg. "abc" =~ "^a" is true *)
 let (=~) s re = Str.string_match (Str.regexp re) s 0;;
 
@@ -83,7 +102,7 @@ let fold1_left f l =
 let parse_arb_int s =
     let s' = BatString.trim s in 
     try
-        ignore (Str.search_forward (Str.regexp "^[0-9]+$") s' 0);
+        ignore (Str.search_forward (Str.regexp "^-?[0-9]+$") s' 0);
         Gmp.Z.from_string s'
     with Not_found -> raise (Bad_int_error s);;
 
@@ -108,12 +127,14 @@ let lookup_var_col_from_lx col sys = try
 
 (* ---[ Constraints ]--- *)
 let add_cstr sys lhs op rhs =
-    let lx = match op with
+    let lc = match op with
     | ">=" -> Greater_Or_Equal(lhs, rhs)
     | "<=" -> Less_Or_Equal(lhs, rhs)
     | "==" -> Equal(lhs, rhs)
     | _    -> raise (Bad_oper_error op) in
-    sys.cstrs <- List.append sys.cstrs [lx];;
+    print_string "New linear constraint: ";
+    print_linear_constraint lc;
+    sys.cstrs <- List.append sys.cstrs [lc];;
 
 (* ---[ Parsing ]--- *)
 let parse_term (sys:cstr_sys) (s:string) : linear_expression =
@@ -202,7 +223,11 @@ let rec parse_result_expression sys (lx:linear_expression) =
 let get_result sys mip = 
     let pt = ppl_MIP_Problem_optimizing_point mip in
     match pt with
-    | Point(lx, num) -> parse_result_expression sys lx
+    | Point(lx, num) ->
+            print_string "\nResult Expression:\n";
+            print_linear_expression lx;
+            parse_result_expression sys lx;
+            print_string "\n"
     | _ -> raise (Solver_error "solution was not a point");;
 
 let solve (sys:cstr_sys) =
@@ -226,7 +251,9 @@ let sys = {
 };;
 
 (* let test = Plus ((Variable 1), (Variable 2));; *)
+print_string "\n";;
 parse sys "test_input.opl";;
+print_string "\n\nConstraint system loaded:\n";;
 Printf.printf "Variables: %d\n" sys.next_var_num;;
 print_string("Objective Func: \n");;
 Printf.printf "Constraints: %d\n" (List.length sys.cstrs);;
