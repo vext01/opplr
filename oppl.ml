@@ -153,10 +153,45 @@ let lookup_var_col_from_name sys name = try
     StringMap.find name sys.vars_fwd with
     | Not_found -> raise (Var_not_found_error name);;
 
-(*
-let type_vars sys vnames vtype = 
-    let cols = List.map (lookup_var_col_from_name sys) vnames in ();;
-*)
+let is_z_var ty =
+    match ty with
+    | IntegerVar -> true
+    | _ -> false;;
+
+let is_q_var ty =
+    match ty with
+    | RationalVar -> true
+    | _ -> false;;
+
+let is_b_var ty =
+    match ty with
+    | BinaryVar -> true
+    | _ -> false;;
+
+(* Add 0 <= b <= 1 for a binary variable b *)
+let constrain_binary_var sys mip name = 
+    let lhs = lookup_var_lx sys name in
+    let lobo = Greater_Or_Equal(lhs, Coefficient Gmp.Z.zero) in
+    let upbo = Less_Or_Equal(lhs, Coefficient Gmp.Z.one) in
+    ppl_MIP_Problem_add_constraint mip lobo;
+    ppl_MIP_Problem_add_constraint mip upbo;
+    Printf.printf "New bin var: %s\n" name;
+    print_linear_constraint lobo;
+    print_linear_constraint upbo;;
+
+let type_vars sys mip =
+    let z_vars = StringMap.filter is_z_var sys.vars_fwd_types in
+    let b_vars = StringMap.filter is_b_var sys.vars_fwd_types in
+    let z_cols = [? lookup_var_col_from_name sys x | x <- (StringMap.keys z_vars) ?] in 
+    let b_cols = [? lookup_var_col_from_name sys x | x <- (StringMap.keys b_vars) ?] in
+    Ppl_ocaml.ppl_MIP_Problem_add_to_integer_space_dimensions mip (List.of_enum z_cols);
+    Ppl_ocaml.ppl_MIP_Problem_add_to_integer_space_dimensions mip (List.of_enum b_cols);
+    List.iter (constrain_binary_var sys mip) (List.of_enum (StringMap.keys b_vars));;
+
+let number_of_bin_vars sys =
+    let z_vars = StringMap.filter is_z_var sys.vars_fwd_types in
+    let keys = StringMap.keys z_vars in
+    List.length (List.of_enum keys);;
 
 (* ---[ Constraints ]--- *)
 let add_cstr sys lhs op rhs =
@@ -208,7 +243,6 @@ let parse_cstr_line sys cstr_name line =
 let parse_vars_line sys vtype line =
     let elems = trim_split "," line in
     List.iter (add_var sys vtype) elems; ();;
-    (*type_vars sys vtype elems;; *)
 
 let parse_real_line sys line =
     let elems = trim_split ":" line in
@@ -242,9 +276,6 @@ let print_result vname qval =
 
 let print_results sys =
     StringMap.iter print_result sys.result_map;;
-(*
-    List.iter (print_result) sys.result;;
-*)
 
 let get_col_from_expression (lx:linear_expression) : int =
     match lx with
@@ -285,57 +316,6 @@ let get_result sys mip =
             print_string "\n"
     | _ -> raise (Solver_error "solution was not a point");;
 
-(* places type restrictions on variables prior to solving *)
-(*
-let type_vars sys = 
-    let z_vars = ref [] in
-    let get_lists = fun z_vars name vtype ->
-        match vtype with
-        | IntegerVar -> z_vars <- List.add name z_vars
-        | _ -> ()  in
-    StringMap.iter get_lists sys.vars_fwd_types;;
-*)
-
-let is_z_var ty =
-    match ty with
-    | IntegerVar -> true
-    | _ -> false;;
-
-let is_q_var ty =
-    match ty with
-    | RationalVar -> true
-    | _ -> false;;
-
-let is_b_var ty =
-    match ty with
-    | BinaryVar -> true
-    | _ -> false;;
-
-
-(* Add 0 <= b <= 1 for a binary variable b *)
-let constrain_binary_var sys mip name = 
-    let lhs = lookup_var_lx sys name in
-    let lobo = Greater_Or_Equal(lhs, Coefficient Gmp.Z.zero) in
-    let upbo = Less_Or_Equal(lhs, Coefficient Gmp.Z.one) in
-    ppl_MIP_Problem_add_constraint mip lobo;
-    ppl_MIP_Problem_add_constraint mip upbo;
-    Printf.printf "New bin var: %s\n" name;
-    print_linear_constraint lobo;
-    print_linear_constraint upbo;;
-
-let type_vars sys mip =
-    let z_vars = StringMap.filter is_z_var sys.vars_fwd_types in
-    let b_vars = StringMap.filter is_b_var sys.vars_fwd_types in
-    let z_cols = [? lookup_var_col_from_name sys x | x <- (StringMap.keys z_vars) ?] in 
-    let b_cols = [? lookup_var_col_from_name sys x | x <- (StringMap.keys b_vars) ?] in
-    Ppl_ocaml.ppl_MIP_Problem_add_to_integer_space_dimensions mip (List.of_enum z_cols);
-    Ppl_ocaml.ppl_MIP_Problem_add_to_integer_space_dimensions mip (List.of_enum b_cols);
-    List.iter (constrain_binary_var sys mip) (List.of_enum (StringMap.keys b_vars));;
-
-let number_of_bin_vars sys =
-    let z_vars = StringMap.filter is_z_var sys.vars_fwd_types in
-    let keys = StringMap.keys z_vars in
-    List.length (List.of_enum keys);;
 
 let solve (sys:cstr_sys) =
     let n_cstrs = List.length sys.cstrs + ((number_of_bin_vars sys) * 2) in
@@ -379,4 +359,5 @@ print_string("Objective Func: \n");;
 print_linear_expression sys.obj_fun;;
 Printf.printf "\n\nConstraints: %d\n" (List.length sys.cstrs);;
 let res = solve sys;;
+Printf.printf "\nResult:\n";;
 print_results sys;;
