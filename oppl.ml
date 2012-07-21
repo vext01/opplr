@@ -320,7 +320,8 @@ let solve (sys:cstr_sys) =
     let status = ppl_MIP_Problem_solve mip in
     match status with
     | Optimized_Mip_Problem -> get_result sys mip
-    | _                     -> raise (Solver_error "NOT OPTIMAL");;
+    | Unbounded_Mip_Problem -> raise (Solver_error "UNBOUNDED")
+    | Unfeasible_Mip_Problem-> raise (Solver_error "INFEASIBLE");;
 
 (* ---[ MAIN ]--- *)
 
