@@ -23,6 +23,7 @@ open Ppl_ocaml;;
 open Sys;;
 open BatList;;
 open Batteries_uni;;
+open Unix;;
 
 (* ---[ Types ]--- *)
 
@@ -260,6 +261,7 @@ let parse_line sys line =
         );;
 
 let parse sys filename = 
+    Printf.printf "Parsing %s%!\n" filename;
     let file = open_in filename in try
         while true do (parse_line sys (input_line file)) done
         with End_of_file -> close_in file; ();;
@@ -317,7 +319,12 @@ let solve (sys:cstr_sys) =
     (* because of two extra cstrs 0 <= b <= 1 for BinVar *)
     let mip = ppl_new_MIP_Problem n_cstrs sys.cstrs sys.obj_fun sys.obj_dir in
     ignore (type_vars sys mip);
+    print_endline "Solving...";
+    let time_before = Unix.time () in
     let status = ppl_MIP_Problem_solve mip in
+    let time_after = Unix.time () in
+    let time_delta = time_after -. time_before in
+    Printf.printf "Solve complete in %f seconds.%!\n" time_delta;
     match status with
     | Optimized_Mip_Problem -> get_result sys mip
     | Unbounded_Mip_Problem -> raise (Solver_error "UNBOUNDED")
