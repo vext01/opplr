@@ -25,4 +25,8 @@ ppl-top:
 	ocamlfind ocamlmktop ${PPL_OLIBS} ${GMP_OLIBS} \
 		-linkpkg ${OCAML_PACKAGES} -o ppl_top ${PPL_CXXLIBS} \
 		gmp.cma ppl_ocaml.cma ${PPL_OLIBS} ppl_ocaml.cma
-
+.PHONY: clean
+clean:
+	rm -f opplr
+	rm -f opplr.opt
+	rm -f ppl-top
