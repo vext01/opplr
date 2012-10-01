@@ -311,7 +311,17 @@ let get_result sys mip =
     (* extract variable assignments *)
     let pt = ppl_MIP_Problem_optimizing_point mip in
     match pt with
-    | Point(lx, denom) -> parse_result_expression sys lx denom;
+    | Point(lx, denom) ->
+      (
+        match lx with
+        (*
+         * If we get a zero coefficient, then it follows that all variables
+         * take a vlue of 0. Since 0 is the default value, we do nothing.
+         *)
+        | Coefficient z when z = Gmp.Z.zero -> ();
+        (* Otherwise we parse the expression tree *)
+        | _ -> parse_result_expression sys lx denom;
+      )
     | _ -> raise (Solver_error "solution was not a point");;
 
 let solve (sys:cstr_sys) =
